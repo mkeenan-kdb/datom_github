@@ -2,6 +2,7 @@ const URL = "http://"+window.location.host
 const editorModal = document.getElementById("editorModal")
 const editorTemplate = editorModal.innerHTML
 let datomContainer = document.getElementById('datom-container')
+let datomGridContainer = document.getElementById('datom-grid-container')
 let current_editor = null
 let editors = {}
 let boxInfo = {} //{ID:{style: '...',selected:true}}
@@ -33,7 +34,7 @@ function parseHTML(html){
 
 function loadBoxTemplateHTML(){
   //Load template HTML used for new boxes
-  const htmls = loadHtml("datom-box-template.html").then((res) => {
+  const htmls = loadHtml("datom-grid-box-template.html").then((res) => {
     var reselem = parseHTML(res);
     boxTemplate = reselem.getElementById("datom-box-template");
   });
@@ -74,4 +75,5 @@ function loadContainerHTML(){
   ace.require("ace/ext/language_tools");
   loadBoxTemplateHTML();
   loadContainerHTML();
+  fillGrid();
 })();

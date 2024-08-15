@@ -4,7 +4,7 @@
 \d .dtom
 PROJ_ROOT:"/Users/michael/q/projects/datom"
 DB_ROOT:PROJ_ROOT,"/db"
-HTML_ROOT:PROJ_ROOT,"/html_v1"
+HTML_ROOT:PROJ_ROOT,"/html"
 LAYOUTS:PROJ_ROOT,"/layouts"
 HTML_FILE:HTML_ROOT,"/datom.html"
 \d .

@@ -87,26 +87,37 @@ function parseLayouts(layouts){
   });
 }
 
-function newBox(){
+function renderBoxDimensions(row, col, width, height){
+  console.log("Rendering box dimensions", row, col, width, height);
+  console.log(datomGridContainer);
+}
+
+function newBoxOld(row, col, width, height){
+  console.log("Setting up new box!");
+  //Generate a new box with a new ID
+  //var newBox = boxTemplate;
+  var newBox = boxTemplate;
+  newId = newBoxId();
+  newBox.id = newId;
+  newBox.style.gridArea = row+" / "+col+" / "+(row+height)+" / "+(col+width);
+  datomGridContainer.appendChild(newBox);
+  boxInfo[newId] = {txt:newBox.outerHTML};
+  createEditor(newId);
+  updateBoxState();
+}
+
+function newBox(row, col, width, height){
   console.log("Setting up new box!");
   //Generate a new box with a new ID
   var newBox = boxTemplate;
   newId = newBoxId();
   newBox.id = newId;
+  newBox.style.gridArea = row+" / "+col+" / "+(row+height)+" / "+(col+width);
   //add new box to the boxInfo state-holder
   boxInfo[newId] = {txt:newBox.outerHTML};
+  datomGridContainer.append(newBox);
   createEditor(newId);
   updateBoxState();
-  //Generate new html containing all boxes and add to the main container
-  var html = '';
-  Object.keys(boxInfo).forEach((item, i) => {
-    html+=boxInfo[item]['txt'];
-  });
-  datomContainer.innerHTML = html;
-  //Make elements draggable
-  var items = document.querySelectorAll(".datom-box");
-  boxInfo[newId]['html'] = document.getElementById(newId).querySelector(".datom-box-body").innerHTML.trim();
-  boxInfo[newId]['editor'].setValue(boxInfo[newId].html);
   console.log(boxInfo);
 }
 
