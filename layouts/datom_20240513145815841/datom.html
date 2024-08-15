@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Datom</title>
+    <link rel="stylesheet" href="css/draggable.css">
+    <link rel="icon" href="./favicon.ico" type="image/x-icon">
+  </head>
+  <body>
+    <div class="datom-header">
+      <button class="custom-input" type="button" onclick="newLayout();" name="button">New Layout</button>
+      <button class="custom-input" type="button" onclick="newBox();" name="button">New Box</button>
+      <button class="custom-input" type="button" onclick="saveLayout();" name="button">Save Layout</button>
+      <button class="custom-input" type="button" onclick="testFunc();" name="button">Render chart</button>
+      <label for="file-select"></label>
+      <select class="custom-input" name="files" id="file-select">
+        <option value="null_default">No layout</option>
+      </select>
+    </div>
+    <div id="datom-container">
+    </div>
+    <dialog id="editorModal">
+      <div class="lang_icons">
+        <img name="html" onclick="changeEditorScript('html_lang')" src="img/html_icon.png" class="lang_icon">
+        <img name="js" onclick="changeEditorScript('js_lang')" src="img/js_icon.png" class="lang_icon">
+        <img name="css" onclick="changeEditorScript('css_lang')" src="img/css_icon.png" class="lang_icon">
+        <img name="q" onclick="changeEditorScript('q_lang')" src="img/q_icon.png" class="lang_icon">
+      </div>
+    </dialog>
+    <script src="libs/ace-builds/src/ace.js" type="text/javascript"></script>
+    <script type="text/javascript" src="libs/ace-builds/src/ext-language_tools.js"></script>
+    <!--script type="module" src="libs/Chart.js/dist/chart.js"></script-->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <script type="text/javascript" src="js/boxes.js"></script>
+    <script type="text/javascript" src="js/editor.js"></script>
+    <script type="text/javascript" src="js/draggable.js"></script>
+    <script type="text/javascript" src="js/configure_datom.js"></script>
+  </body>
+</html>

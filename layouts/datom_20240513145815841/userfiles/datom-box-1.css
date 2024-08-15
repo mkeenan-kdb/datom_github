@@ -1,0 +1,34 @@
+.booyah div:first-child{
+    background-color:lightgreen;
+}
+
+.booyah div:nth-child(2){
+    background-color:lightblue;
+}
+
+.booyah div button{
+    background-color: white;
+    border: 1px solid black;
+    border-radius: 3px;
+    
+}
+
+.booyah div button:hover{
+    background-color: purple;
+    border: 1px solid red;
+    border-radius: 8px;
+    
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

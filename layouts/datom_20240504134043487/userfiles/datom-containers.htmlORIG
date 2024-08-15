@@ -1,0 +1,21 @@
+<div id="datom-box-1" class="box datom-box" selected="false" style="top: 107px; left: 13px; width: 462px; height: 414px;">
+  <div class="box-header drag-handle">
+    <img onclick="openEditorModal(this)" src="img/coding.png" class="datom-icon">
+    <p style="display:inline;">Drag here</p>
+  </div>
+  <div id="datom-box-content" class="datom-box-body box-body">
+    <h2>HTML Links</h2>
+    <p>HTML links are defined with the a tag:</p>
+
+    <a href="https://www.w3schools.com">This is a link</a>
+  </div>
+</div>
+<div id="datom-box-2" class="box datom-box" selected="true" style="top: 8px; left: 484px; width: 978px; height: 511px;">
+  <div class="box-header drag-handle">
+    <img onclick="openEditorModal(this)" src="img/coding.png" class="datom-icon">
+    <p style="display:inline;">Drag here</p>
+  </div>
+  <div id="datom-box-content" class="datom-box-body box-body">
+    <canvas class="datom-chart"></canvas>
+  </div>
+</div>
