@@ -1,0 +1,22 @@
+/* A box's css tab is injected as a plain <style> for the whole page, so
+   every class here is shared by every box in this layout -- which is why
+   the other boxes can just use .stat and .dtable. Prefix a rule with
+   #datom-box-3 if you want it to apply to one box only. */
+
+.stat { display: flex; flex-direction: column; justify-content: center; height: 100%; gap: 3px }
+.stat .k { font: 600 11px/1.4 system-ui, sans-serif; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--fg-dim) }
+.stat .v { font: 600 30px/1.1 system-ui, sans-serif; font-variant-numeric: tabular-nums }
+.stat .s { font: 12px/1.4 system-ui, sans-serif; color: var(--fg-dim) }
+
+/* section title, used by the chart and table boxes */
+.hd { font: 600 11px/1.4 system-ui, sans-serif; letter-spacing: .06em;
+      text-transform: uppercase; color: var(--fg-dim); margin-bottom: 8px }
+
+.dtable { width: 100%; border-collapse: collapse; font: 13px/1.5 system-ui, sans-serif }
+.dtable th { text-align: left; font: 600 10px/1.4 system-ui, sans-serif; letter-spacing: .05em;
+             text-transform: uppercase; color: var(--fg-dim); padding-bottom: 6px }
+.dtable td { padding: 4px 0; border-top: 1px solid var(--border);
+             font-variant-numeric: tabular-nums }
+.dtable td + td, .dtable th + th { text-align: right }
+.dtable .sell { color: var(--danger) }

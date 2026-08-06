@@ -26,12 +26,34 @@ function newBox(row, col, w = BOX_W, h = BOX_H) {
   setArea(box, row, col, clamp(w, 1, COLS + 1 - col), clamp(h, 1, ROWS + 1 - row))
   grid.appendChild(box)
   // Seed every language: the server writes one file per language and blows up
-  // on a missing key, so a never-edited box used to break saveLayout.
-  boxInfo[box.id] = { lang: "html", html: "", js: "", css: "", q: "" }
+  // on a missing key, so a never-edited box used to break saveLayout. The html
+  // and js are starter content -- an empty box renders as a blank rectangle and
+  // gives querySelector nothing to find, which is a confusing first five minutes.
+  boxInfo[box.id] = { lang: "html", q: "", ...starterCode() }
   attachBox(box)
   selectBox(box.id)
+  renderBox(box.id)
   updateBoxState()
   return box
+}
+
+function starterCode() {
+  return {
+    html: '<div class="content">New box</div>',
+    css: ".content{display:grid;place-content:center;height:100%;opacity:.55;font-size:13px}",
+    js: [
+      "// Three things are in scope here:",
+      "//   data  the result of the q tab, as JSON (null when the q tab is empty)",
+      "//   body  this box's content element -- what the html tab fills",
+      "//   box   the whole box, header and all (box.id, box.__timer, ...)",
+      "//",
+      "// Scope selectors to body, not box: box also contains the header, so",
+      "// box.querySelector('div') matches the drag bar rather than your markup.",
+      "//",
+      "// body.querySelector('.content').textContent = data",
+      ""
+    ].join("\n")
+  }
 }
 
 function deleteBox(id) {
@@ -103,6 +125,31 @@ function currentLayout() {
   return v === "null_option" ? "" : v
 }
 
+// A layout name is a directory name, so anything outside [A-Za-z0-9_-] becomes
+// a dash. The server applies the same whitelist -- doing it here too is only so
+// the prompt and the overwrite check agree with what lands on disk.
+function cleanName(raw) {
+  return raw.trim().replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "")
+}
+
+function suggestName() {
+  const taken = new Set([...layoutSelect().options].map(o => o.value))
+  let n = 1, name = "dashboard"
+  while (taken.has(name)) name = "dashboard-" + ++n
+  return name
+}
+
+// "" means the user backed out; every caller treats that as cancel.
+function askName() {
+  const raw = prompt("Name this dashboard", suggestName())
+  if (raw === null) return ""
+  const name = cleanName(raw)
+  if (!name) { toast("Names need at least one letter or number"); return "" }
+  const taken = [...layoutSelect().options].some(o => o.value === name)
+  if (taken && !confirm(`"${name}" already exists.\n\nOverwrite it?`)) return ""
+  return name
+}
+
 async function saveLayout() {
   updateBoxState()
   const boxes = {}
@@ -111,18 +158,21 @@ async function saveLayout() {
   for (const [id, b] of Object.entries(boxInfo)) {
     boxes[id] = { txt: b.txt, html: b.html || "", js: b.js || "", css: b.css || "", q: b.q || "" }
   }
-  const target = currentLayout()
-  const filetime = await sendData({ endp: "saveLayout", payl: { boxes, target } })
-  if (!filetime) return
-  toast(target ? "Layout updated" : "Layout saved")
+  // Saving an open layout rewrites it; a new one asks for a name first.
+  const open = currentLayout()
+  const name = open || askName()
+  if (!name) return
+  const saved = await sendData({ endp: "saveLayout", payl: { boxes, name } })
+  if (!saved) return
+  toast(open ? `Updated ${saved}` : `Saved as ${saved}`)
   await getLayouts()   // refresh the list; the server reports the new current
 }
 
 async function deleteLayout() {
-  const ft = currentLayout()
-  if (!ft) return
-  if (!confirm(`Delete layout ${ft}?\n\nThis removes its files from disk and cannot be undone.`)) return
-  if (await sendData({ endp: "deleteLayout", payl: ft })) location.reload()
+  const name = currentLayout()
+  if (!name) return
+  if (!confirm(`Delete layout ${name}?\n\nThis removes its files from disk and cannot be undone.`)) return
+  if (await sendData({ endp: "deleteLayout", payl: name })) location.reload()
 }
 
 async function newLayout() {
@@ -142,7 +192,7 @@ async function getLayouts() {
   const select = layoutSelect()
   select.replaceChildren(
     new Option("Empty layout", "null_option"),
-    ...(r.layouts || []).map(l => new Option(l.filetime, l.filetime))
+    ...(r.layouts || []).map(n => new Option(n, n))
   )
   select.value = r.current || "null_option"
   document.getElementById("btn-delete-layout").disabled = !currentLayout()

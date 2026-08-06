@@ -81,14 +81,17 @@ async function loadEditorCode(id) {
 }
 
 // Render one box: html, then css, then the q tab (evaluated on the server),
-// then the js -- which receives the q result as `data` and its own element as
-// `box`. This used to re-render and re-eval every box on every save, which is
-// what stacked duplicate charts on top of each other.
+// then the js -- which receives the q result as `data`, its content element as
+// `body`, and the whole box as `box`. This used to re-render and re-eval every
+// box on every save, which is what stacked duplicate charts on top of each other.
 async function renderBox(id) {
   const box = document.getElementById(id)
   if (!box || !boxInfo[id]) return
 
-  box.querySelector(".datom-box-body").innerHTML = boxInfo[id].html || ""
+  // `body` is what the html tab fills. Scope selectors to it: box.querySelector
+  // also sees the header and its buttons, so a bare "div" matches the drag bar.
+  const body = box.querySelector(".datom-box-body")
+  body.innerHTML = boxInfo[id].html || ""
 
   let sheet = document.getElementById("css_" + id)
   if (!sheet) {
@@ -107,10 +110,15 @@ async function renderBox(id) {
   }
 
   try {
-    new Function("data", "box", boxInfo[id].js || "")(data, box)
+    new Function("data", "body", "box", boxInfo[id].js || "")(data, body, box)
   } catch (err) {
     console.error(`[${id}] js:`, err)   // one bad box must not stop the others
-    showBoxError(box, "js: " + err.message)
+    // The usual cause of a null here is a selector with no markup to find.
+    const noHtml = !(boxInfo[id].html || "").trim()
+    showBoxError(box, "js: " + err.message + (noHtml && /of null/.test(err.message)
+      ? "\n\nThe html tab is empty, so there is nothing for querySelector to "
+        + "find. Put your markup there, or build it in js via body.innerHTML."
+      : ""))
   }
 }
 

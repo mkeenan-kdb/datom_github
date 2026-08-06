@@ -10,78 +10,114 @@ HTML_FILE:HTML_ROOT,"/datom.html"
 if[not(`$"datom.html")in key hsym`$HTML_ROOT;'"start datom from the repo root: no ",HTML_FILE];
 \d .
 
-/ .h.HOME defaults to "html" relative to cwd, which ldb[] sets to PROJ_ROOT
+/ .h.HOME defaults to "html" relative to cwd, which the boot below sets to PROJ_ROOT
 
 / rmLibs/addLibs lived here to symlink a vendored libs/ into every layout
 / snapshot. ace and apexcharts come from a CDN now, so both are gone -- and
 / with them the "rm -r" built from a hardcoded path.
 
-ldb:{
- system"mkdir -p ",.dtom.DB_ROOT;  / db/ is generated, not checked in
- system"l ",.dtom.DB_ROOT;
- system"cd ",.dtom.PROJ_ROOT;
- }
+system"mkdir -p ",.dtom.DB_ROOT," ",.dtom.LAYOUTS;  / both are generated, not checked in
+system"l ",.dtom.DB_ROOT;
+system"cd ",.dtom.PROJ_ROOT;
 
-ldb[];
+/ Demo data for the example dashboard in layouts/example. Skipped entirely if
+/ you already have a `trade` -- a real one loaded from db/ wins. The seed is
+/ fixed so every box in the layout agrees, and reloads do not reshuffle. Built
+/ inside a lambda so only `trade` lands in the namespace you query from.
+if[not `trade in key `.;
+  trade:{[]
+    system"S 42";
+    bases:`AAPL`MSFT`NVDA`AMZN`GOOG`META`TSLA!214.3 402.1 121.9 178.6 165.2 495.7 248.9;
+    s:(n:2000)?key bases;
+    ([]
+      time:asc 09:30:00.000+n?06:30:00.000;
+      sym:s;
+      side:n?`buy`buy`sell;  / weighted, so the buy/sell box is not a flat 50/50
+      size:10*1+n?200;
+      px:0.01*"j"$100*bases[s]*1+0.02*-1+n?2.0)}[];
+ ];
 
-/ filetime of the layout currently being served; "" means the blank html/ one.
+/ name of the layout currently being served; "" means the blank html/ one.
 .dtom.current:""
 
-/ A layout snapshot dir is the only thing here allowed to be removed, and only
-/ ever under layouts/. Every rm -rf in this file goes through here.
+/ A layout is a directory under layouts/ named after the dashboard, so the name
+/ IS the id and the disk is the only source of truth -- there is no db table to
+/ drift out of sync with what is actually there. Only these characters survive,
+/ so nothing from the client can escape layouts/, and an empty name is rejected
+/ rather than resolving to the layouts dir itself.
+.dtom.layoutName:{
+  if[not count n:((),x)inter .Q.an,"-";'"bad layout name: ",x];
+  n
+ }
+
+.dtom.layoutDir:{.dtom.LAYOUTS,"/",.dtom.layoutName x}
+
+/ Same, but for a layout that has to be there already: saveLayout is the only
+/ thing allowed to create one. Without this, opening a name that does not exist
+/ quietly built an empty layout dir and served it.
+.dtom.existingLayout:{
+  if[not any .dtom.layouts[]~\:.dtom.layoutName x;'"no such layout: ",x];
+  .dtom.layoutDir x
+ }
+
+/ A layout dir is the only thing allowed to be removed, and only ever a direct
+/ child of layouts/: the path has to be exactly what layoutDir would build from
+/ its own basename. Every rm -rf in this file goes through here.
 .dtom.rmLayoutDir:{
-  if[not x like .dtom.LAYOUTS,"/datom_*";'"refusing to remove ",x];
+  if[not x~.dtom.layoutDir last "/" vs x;'"refusing to remove ",x];
   system"rm -rf ",x;
  }
 
-/ Only digits survive, so nothing from the client can escape layouts/. An empty
-/ id would resolve to the bare "datom_" dir, so reject it rather than rm that.
-.dtom.layoutDir:{
-  if[not count d:x inter .Q.n;'"bad layout id: ",x];
-  .dtom.LAYOUTS,"/datom_",d
+/ Layout names on disk. Anything that is not a directory (.DS_Store, say) is
+/ ignored rather than offered as a layout.
+.dtom.layouts:{
+  if[not count d:key h:hsym`$.dtom.LAYOUTS;:()];
+  string d where 11h=type each key each .Q.dd[h]each d
  }
 
-/ payl: {boxes:{...}; target:"<filetime>"}. An empty target creates a new
-/ layout; otherwise the named one is rewritten in place, so editing a saved
-/ layout and hitting save updates it instead of spawning a copy each time.
+/ Copy the app into a layout dir -- everything in html/ except userfiles/, which
+/ is the layout's own content and would be clobbered by html/'s empty one. Only
+/ runs when the dir has no datom.html, so a saved layout keeps the copy it was
+/ saved with and old layouts survive changes to the app.
+/ It also means a layout can ship as nothing but its userfiles/, which is how
+/ layouts/example lives in git without a checked-in duplicate of html/.
+.dtom.hydrate:{
+  system"mkdir -p ",x,"/userfiles";
+  if[not(`$"datom.html")in key hsym`$x;
+    f:string key[hsym`$.dtom.HTML_ROOT]except`userfiles;
+    system"cp -r ",(" "sv .dtom.HTML_ROOT,/:"/",/:f)," ",x];
+  x
+ }
+
+/ payl: {boxes:{...}; name:"my-dashboard"}. Saving under a name that already
+/ exists rewrites that layout in place, so editing a saved layout and hitting
+/ save updates it instead of spawning a copy each time.
 .req.saveLayout:{
  boxes:x`boxes;
- target:x`target;
- st:$[count target;target;string .z.Z];
+ name:.dtom.layoutName x`name;
  res:flip[enlist[`container]!string enlist[key boxes]],'uj/[enlist each value boxes];
  scripts:raze{{((x[`container],".",string[y]);x[y])}[x;]each `js`css`q`html}each res;
  newhtml:enlist"\n"sv res`txt;
- newdir:.dtom.layoutDir st;
+ newdir:.dtom.LAYOUTS,"/",name;
  .dtom.rmLayoutDir newdir;  / clean slate: else files for deleted boxes linger
- system"mkdir -p ",newdir;
- system"cp -r ",.dtom.HTML_ROOT,"/* ",newdir;
- system"mkdir -p ",newdir,"/userfiles";  / after the copy, else cp nests it
+ .dtom.hydrate newdir;
  / split on newline so multi-line code is written as real lines, not one blob
  {x 0: "\n" vs y;}'[.Q.dd[hsym`$newdir,"/userfiles";]each`$scripts[;0];scripts[;1]];
  (hsym`$newdir,"/userfiles/datom-containers.html")0: newhtml;
- row:([]filetime:enlist st;dir:enlist newdir;data:enlist res);
- / rewrite the whole table: upsert on a flat file appends, it cannot replace
- (hsym`$.dtom.DB_ROOT,"/layout")set $[`layout in key`.;
-   (delete from layout where filetime~\:st),row;
-   row];
  .h.HOME:newdir;      / you are now editing the layout you just saved
- .dtom.current:st;
- ldb[];
- :st;  / the filetime, so the client can refresh and select it
+ .dtom.current:name;
+ :name;  / the name it landed under, so the client can refresh and select it
  }
 
 .req.deleteLayout:{
- if[not $[`layout in key`.;any layout[`filetime]~\:x;0b];'"no such layout: ",x];
- .dtom.rmLayoutDir .dtom.layoutDir x;
- if[`layout in key`.;
-   (hsym`$.dtom.DB_ROOT,"/layout")set delete from layout where filetime~\:x];
- if[.dtom.current~x;.dtom.current:"";.h.HOME:"html"];  / dropped the one on screen
- ldb[];
+ .dtom.rmLayoutDir .dtom.existingLayout x;
+ / dropped the one on screen: fall back to the blank canvas
+ if[.dtom.current~.dtom.layoutName x;.dtom.current:"";.h.HOME:"html"];
  :1b;
  }
 
 / current lets the page reopen the dropdown on whatever layout is being served
-.req.getLayouts:{`layouts`current!($[`layout in key`.;layout;()];.dtom.current)}
+.req.getLayouts:{`layouts`current!(.dtom.layouts[];.dtom.current)}
 
 / Run a box's q tab and hand the result back as JSON. .j.j already flattens
 / tables and unkeys `by` results, and .z.pp traps and reports errors, so plain
@@ -91,8 +127,8 @@ ldb[];
 .req.runQ:{value x}
 
 .req.changeLayout:{
-  .h.HOME:.dtom.layoutDir x;
-  .dtom.current:x;
+  .h.HOME:.dtom.hydrate .dtom.existingLayout x;
+  .dtom.current:.dtom.layoutName x;
   :1b;
  }
 
@@ -114,5 +150,3 @@ ldb[];
  if[count .dtom.lastErr;-1"REQ ERROR (",data[`endp],"): ",.dtom.lastErr];
  :.h.hy[`json;.j.j`called`payl`resp`err!(data`endp;data`payl;res;.dtom.lastErr)];
  }
-
-

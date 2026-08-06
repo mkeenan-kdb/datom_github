@@ -59,12 +59,24 @@
           el.appendChild(li)
         }
         try {
-          ok("boots with no grid cell divs", grid.children.length === 0)
+          // The suite runs against whatever layout is being served, which may
+          // already have boxes in it (layouts/example does), so counts are
+          // relative to what booted rather than assuming a blank canvas.
+          const n0 = grid.querySelectorAll(".datom-box").length
+          ok("boots with no grid cell divs, only boxes",
+             [...grid.children].every(c => c.classList.contains("datom-box")))
           ok("box template loaded", !!boxTemplate)
 
           const a = newBox(3, 4), b = newBox(10, 20)
           ok("cloneNode gives two live boxes",
-             grid.querySelectorAll(".datom-box").length === 2 && a.isConnected && b.isConnected)
+             grid.querySelectorAll(".datom-box").length === n0 + 2 && a.isConnected && b.isConnected)
+
+          // A new box must not start blank: an empty html tab gives selectors
+          // nothing to find, which is the "Cannot read properties of null" trap.
+          await new Promise(r => setTimeout(r, 50))
+          ok("a new box starts with markup a selector can find",
+             /<div/.test(boxInfo[a.id].html) &&
+             a.querySelector(".datom-box-body").querySelector("div") !== null)
           ok("gridArea round trips through getArea",
              JSON.stringify(getArea(a)) === '{"row":3,"col":4,"w":12,"h":8}')
 
@@ -85,7 +97,18 @@
           await renderBox(b.id)
           ok("q result reaches the js as `data`, keyed table unkeyed",
              b.querySelector(".out").textContent === "A:4,B:2")
-          ok("the js also receives its own element as `box`", b.querySelector(".out") !== null)
+
+          // `body` must be the content element, so a bare selector cannot
+          // reach the header -- box.querySelector('div') hits the drag bar.
+          boxInfo[b.id].html = "<div class=inner>x</div>"
+          boxInfo[b.id].q = ""
+          boxInfo[b.id].js = "window.__bodyCls = body.className; " +
+                             "window.__bodyDiv = body.querySelector('div').className; " +
+                             "window.__boxDiv  = box.querySelector('div').className"
+          await renderBox(b.id)
+          ok("`body` is the content element", window.__bodyCls === "datom-box-body")
+          ok("body.querySelector('div') finds your content, not the header",
+             window.__bodyDiv === "inner" && window.__boxDiv === "datom-box-header")
 
           boxInfo[b.id].q = "select from nosuchtable"
           boxInfo[b.id].js = "window.__ranAfterBadQ = true"
@@ -148,6 +171,25 @@
           boxInfo[a.id].js = "throw new Error('contained')"
           await renderBox(a.id)
           ok("a throwing box does not break the page", a.isConnected)
+
+          // Layouts are named directories, so the name is the id. Round trip a
+          // throwaway one rather than the UI functions, which reload the page.
+          ok("names are cleaned for the filesystem", cleanName(" my dash!! ") === "my-dash")
+          const box1 = { txt: '<div id="datom-box-1" class="datom-box"></div>',
+                         html: "<p>x</p>", js: "", css: "", q: "" }
+          const payl = { boxes: { "datom-box-1": box1 }, name: "selftest zz" }
+          const saved = await sendData({ endp: "saveLayout", payl })
+          ok("the server drops anything it will not put in a path", saved === "selftestzz")
+          const list = await sendData({ endp: "getLayouts", payl: {} })
+          ok("the saved name is the one listed and served",
+             list.layouts.includes("selftestzz") && list.current === "selftestzz")
+          await sendData({ endp: "changeLayout", payl: "nosuchlayout" })
+          ok("opening a name that does not exist errors, it does not create one",
+             /no such layout/.test(lastServerError))
+          await sendData({ endp: "deleteLayout", payl: "selftestzz" })
+          const after = await sendData({ endp: "getLayouts", payl: {} })
+          ok("delete removes it from disk and from the list",
+             !after.layouts.includes("selftestzz") && after.current === "")
         } catch (e) {
           ok("suite ran without throwing: " + e.message, false)
         }

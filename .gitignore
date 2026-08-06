@@ -1,5 +1,12 @@
 .DS_Store
 
 # generated at runtime by the server
-/layouts/
 /db/
+
+# layouts/ is where saved dashboards land, so it is generated too -- except the
+# example, which ships as nothing but its userfiles/. The app files (js, css,
+# datom.html) are copied in on first use, so they stay ignored here.
+/layouts/*
+!/layouts/example/
+/layouts/example/*
+!/layouts/example/userfiles/

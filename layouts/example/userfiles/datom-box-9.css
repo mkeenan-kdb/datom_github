@@ -1,0 +1,4 @@
+.about { font: 13px/1.6 system-ui, sans-serif }
+.about p { margin: 0 0 10px }
+.about code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+              padding: 1px 4px; border-radius: 4px; background: var(--surface-2) }
