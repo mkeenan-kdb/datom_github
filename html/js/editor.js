@@ -80,6 +80,12 @@ async function loadEditorCode(id) {
   LANGS.forEach((l, i) => boxInfo[id][l] = (files[i] || "").replace(/\n$/, ""))
 }
 
+function scopeCSS(id, css) {
+  if (!css || !css.trim()) return ""
+  if (/^\s*@scope/i.test(css)) return css
+  return `@scope (#${id}) {\n${css}\n}`
+}
+
 // Render one box: html, then css, then the q tab (evaluated on the server),
 // then the js -- which receives the q result as `data`, its content element as
 // `body`, and the whole box as `box`. This used to re-render and re-eval every
@@ -99,7 +105,7 @@ async function renderBox(id) {
     sheet.id = "css_" + id
     document.head.appendChild(sheet)
   }
-  sheet.textContent = boxInfo[id].css || ""
+  sheet.textContent = scopeCSS(id, boxInfo[id].css || "")
 
   let data = null
   const q = (boxInfo[id].q || "").trim()

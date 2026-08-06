@@ -57,7 +57,9 @@ function starterCode() {
 }
 
 function deleteBox(id) {
-  document.getElementById(id)?.remove()
+  const box = document.getElementById(id)
+  if (box && box.__timer) clearInterval(box.__timer)
+  box?.remove()
   document.getElementById("css_" + id)?.remove()
   delete boxInfo[id]
   updateBoxState()
@@ -68,13 +70,13 @@ function deleteBox(id) {
 function attachBox(box) {
   box.addEventListener("pointerdown", () => selectBox(box.id))
   box.querySelector(".datom-box-header")
-     .addEventListener("pointerdown", e => startDrag(e, box, "move"))
+    .addEventListener("pointerdown", e => startDrag(e, box, "move"))
   box.querySelector(".datom-box-resize")
-     .addEventListener("pointerdown", e => startDrag(e, box, "resize"))
+    .addEventListener("pointerdown", e => startDrag(e, box, "resize"))
   box.querySelector(".datom-edit")
-     .addEventListener("click", e => { e.stopPropagation(); openEditor(box.id) })
+    .addEventListener("click", e => { e.stopPropagation(); openEditor(box.id) })
   box.querySelector(".datom-delete")
-     .addEventListener("click", e => { e.stopPropagation(); deleteBox(box.id) })
+    .addEventListener("click", e => { e.stopPropagation(); deleteBox(box.id) })
 }
 
 function selectBox(id) {
