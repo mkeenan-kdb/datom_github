@@ -71,33 +71,58 @@ function updateBoxState() {
   })
 }
 
+// Last server-side error text. A q snippet may legitimately return null, so
+// callers need this to tell "returned nothing" from "blew up".
+let lastServerError = ""
+
 async function sendData(data) {
   console.log("→", data.endp, data.payl)
+  lastServerError = ""
   const response = await fetch(API, {
     method: "POST",
     body: JSON.stringify(data),
     headers: { "Content-type": "application/json; charset=UTF-8" }
   })
-  if (!response.ok) { toast("HTTP " + response.status); return null }
+  if (!response.ok) {
+    lastServerError = "HTTP " + response.status
+    toast(lastServerError)
+    return null
+  }
   const resp = JSON.parse(await response.text())
+  lastServerError = resp.err || ""
   if (resp.err) { toast("Server error: " + resp.err); return null }
   return resp.resp
 }
 
+const layoutSelect = () => document.getElementById("file-select")
+
+// The dropdown always shows the layout being served, so its value is the save
+// target: saving an open layout rewrites it instead of spawning a copy.
+function currentLayout() {
+  const v = layoutSelect().value
+  return v === "null_option" ? "" : v
+}
+
 async function saveLayout() {
   updateBoxState()
-  const payl = {}
+  const boxes = {}
   // Explicit whitelist. The old version deleted keys straight out of boxInfo,
   // which corrupted the live state after the first save.
   for (const [id, b] of Object.entries(boxInfo)) {
-    payl[id] = { txt: b.txt, html: b.html || "", js: b.js || "", css: b.css || "", q: b.q || "" }
+    boxes[id] = { txt: b.txt, html: b.html || "", js: b.js || "", css: b.css || "", q: b.q || "" }
   }
-  const filetime = await sendData({ endp: "saveLayout", payl })
+  const target = currentLayout()
+  const filetime = await sendData({ endp: "saveLayout", payl: { boxes, target } })
   if (!filetime) return
-  toast("Layout saved")
-  // A save creates a new snapshot, so the dropdown is stale until we refetch.
-  await getLayouts()
-  document.getElementById("file-select").value = filetime
+  toast(target ? "Layout updated" : "Layout saved")
+  await getLayouts()   // refresh the list; the server reports the new current
+}
+
+async function deleteLayout() {
+  const ft = currentLayout()
+  if (!ft) return
+  if (!confirm(`Delete layout ${ft}?\n\nThis removes its files from disk and cannot be undone.`)) return
+  if (await sendData({ endp: "deleteLayout", payl: ft })) location.reload()
 }
 
 async function newLayout() {
@@ -105,17 +130,20 @@ async function newLayout() {
 }
 
 async function changeLayout(e) {
-  if (e.target.value === "null_option") return
-  if (await sendData({ endp: "changeLayout", payl: e.target.value })) location.reload()
+  // Picking "Empty layout" goes back to the blank canvas rather than doing nothing.
+  const endp = e.target.value === "null_option" ? "newLayout" : "changeLayout"
+  if (await sendData({ endp, payl: e.target.value })) location.reload()
 }
 
+// Server reports both the list and which one it is serving, so a reload
+// reopens the dropdown on the right layout instead of resetting to blank.
 async function getLayouts() {
-  parseLayouts(await sendData({ endp: "getLayouts", payl: {} }) || [])
-}
-
-function parseLayouts(layouts) {
-  document.getElementById("file-select").replaceChildren(
+  const r = await sendData({ endp: "getLayouts", payl: {} }) || {}
+  const select = layoutSelect()
+  select.replaceChildren(
     new Option("Empty layout", "null_option"),
-    ...layouts.map(l => new Option(l.filetime, l.filetime))
+    ...(r.layouts || []).map(l => new Option(l.filetime, l.filetime))
   )
+  select.value = r.current || "null_option"
+  document.getElementById("btn-delete-layout").disabled = !currentLayout()
 }

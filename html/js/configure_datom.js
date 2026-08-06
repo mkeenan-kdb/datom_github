@@ -64,6 +64,7 @@ function toast(msg) {
 
   document.getElementById("btn-new-layout").addEventListener("click", newLayout)
   document.getElementById("btn-save-layout").addEventListener("click", saveLayout)
+  document.getElementById("btn-delete-layout").addEventListener("click", deleteLayout)
   // Bound once here; parseLayouts() used to stack a new listener on every call.
   document.getElementById("file-select").addEventListener("change", changeLayout)
 

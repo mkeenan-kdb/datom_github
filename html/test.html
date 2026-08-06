@@ -18,6 +18,7 @@
     <!-- Same DOM the app boots against; the suite drives the real modules. -->
     <header class="datom-header" style="display:none">
       <button id="btn-new-layout"></button><button id="btn-save-layout"></button>
+      <button id="btn-delete-layout"></button>
       <select id="file-select"></select>
     </header>
     <main id="datom-grid-container"></main>
@@ -70,12 +71,30 @@
           boxInfo[a.id].html = "<p class=t>hi</p>"
           boxInfo[a.id].css = ".t{color:rgb(1,2,3)}"
           boxInfo[a.id].js = "window.__n=(window.__n||0)+1"
-          renderBox(a.id)
+          await renderBox(a.id)
           ok("renders html + css + js",
              a.querySelector(".t") &&
              getComputedStyle(a.querySelector(".t")).color === "rgb(1, 2, 3)" && window.__n === 1)
-          renderBox(b.id)
+          await renderBox(b.id)
           ok("rendering one box does not re-eval another", window.__n === 1)
+
+          // the q tab: evaluated on the server, result handed to the js as `data`
+          boxInfo[b.id].html = "<span class=out></span>"
+          boxInfo[b.id].q = "select sum size by sym from ([]sym:`A`B`A;size:1 2 3)"
+          boxInfo[b.id].js = "box.querySelector('.out').textContent = data.map(r=>r.sym+':'+r.size).join(',')"
+          await renderBox(b.id)
+          ok("q result reaches the js as `data`, keyed table unkeyed",
+             b.querySelector(".out").textContent === "A:4,B:2")
+          ok("the js also receives its own element as `box`", b.querySelector(".out") !== null)
+
+          boxInfo[b.id].q = "select from nosuchtable"
+          boxInfo[b.id].js = "window.__ranAfterBadQ = true"
+          await renderBox(b.id)
+          ok("a failing q shows in the box and skips the js",
+             /nosuchtable/.test(b.querySelector(".datom-box-error")?.textContent || "") &&
+             window.__ranAfterBadQ === undefined)
+          boxInfo[b.id].q = ""; boxInfo[b.id].js = ""; boxInfo[b.id].html = ""
+          await renderBox(b.id)
 
           openEditor(a.id)
           ok("editor opens on the right buffer", editor.getValue() === "<p class=t>hi</p>")
@@ -127,7 +146,7 @@
              boxInfo[a.id].style === undefined)
 
           boxInfo[a.id].js = "throw new Error('contained')"
-          renderBox(a.id)
+          await renderBox(a.id)
           ok("a throwing box does not break the page", a.isConnected)
         } catch (e) {
           ok("suite ran without throwing: " + e.message, false)

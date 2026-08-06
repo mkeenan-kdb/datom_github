@@ -94,6 +94,18 @@ body {
   color: var(--accent);
 }
 
+.custom-input:disabled {
+  opacity: .4;
+  cursor: default;
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.custom-input.danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 .custom-input:focus-visible,
 .datom-icon:focus-visible,
 .lang_icon:focus-visible {
@@ -210,6 +222,18 @@ select.custom-input { padding-right: 8px; }
   min-height: 0;
   padding: 12px;
   overflow: auto;
+}
+
+.datom-box-error {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--danger);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 .datom-box-resize {

@@ -80,9 +80,11 @@ async function loadEditorCode(id) {
   LANGS.forEach((l, i) => boxInfo[id][l] = (files[i] || "").replace(/\n$/, ""))
 }
 
-// Render one box. This used to re-render and re-eval every box on every save,
-// which is what stacked duplicate charts on top of each other.
-function renderBox(id) {
+// Render one box: html, then css, then the q tab (evaluated on the server),
+// then the js -- which receives the q result as `data` and its own element as
+// `box`. This used to re-render and re-eval every box on every save, which is
+// what stacked duplicate charts on top of each other.
+async function renderBox(id) {
   const box = document.getElementById(id)
   if (!box || !boxInfo[id]) return
 
@@ -96,9 +98,25 @@ function renderBox(id) {
   }
   sheet.textContent = boxInfo[id].css || ""
 
+  let data = null
+  const q = (boxInfo[id].q || "").trim()
+  if (q) {
+    data = await sendData({ endp: "runQ", payl: q })
+    // null is a valid q result (an assignment, say), so check the error too.
+    if (data === null && lastServerError) return showBoxError(box, "q: " + lastServerError)
+  }
+
   try {
-    new Function(boxInfo[id].js || "")()
+    new Function("data", "box", boxInfo[id].js || "")(data, box)
   } catch (err) {
     console.error(`[${id}] js:`, err)   // one bad box must not stop the others
+    showBoxError(box, "js: " + err.message)
   }
+}
+
+function showBoxError(box, msg) {
+  const pre = document.createElement("pre")
+  pre.className = "datom-box-error"
+  pre.textContent = msg   // textContent, not innerHTML: this echoes your own code back
+  box.querySelector(".datom-box-body").appendChild(pre)
 }
