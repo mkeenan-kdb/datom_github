@@ -1,79 +1,80 @@
-const URL = "http://"+window.location.host
+// Shared state + boot. Loaded last; every other file only declares functions.
+
+const API = "http://" + window.location.host + "/handleReq?"
 const editorModal = document.getElementById("editorModal")
-const editorTemplate = editorModal.innerHTML
-let datomContainer = document.getElementById('datom-container')
-let datomGridContainer = document.getElementById('datom-grid-container')
-let current_editor = null
-let editors = {}
-let boxInfo = {} //{ID:{style: '...',selected:true}}
-const lang_map = {
-  html_lang:"html",
-  js_lang:'javascript',
-  css_lang:'css',
-  q_lang: 'javascript'
-}
-var boxTemplate
+const grid = document.getElementById("datom-grid-container")
 
-//Load a file from the server
-async function loadHtml(fname) {
-  console.log("Loading html file: ",fname);
-  const response = await fetch(fname);
-  if(response.status !== 200){
-    return"error";
-  }else{
-    const text = await response.text();
-    return text;
+// boxInfo[id] = {txt, html, js, css, q, lang} -- txt is the persisted outerHTML
+const boxInfo = {}
+
+const LANGS = ["html", "js", "css", "q"]
+const lang_map = { html: "html", js: "javascript", css: "css", q: "text" }
+
+// Grid size lives in CSS (--cols/--rows) so the stylesheet and the maths agree.
+const gridStyle = getComputedStyle(grid)
+const COLS = Number(gridStyle.getPropertyValue("--cols"))
+const ROWS = Number(gridStyle.getPropertyValue("--rows"))
+
+let boxTemplate
+
+// Fetch a file, or null if it isn't there. (Previously returned the string
+// "error", which collided with any file whose contents were "error".)
+async function loadFile(fname) {
+  const response = await fetch(fname)
+  return response.ok ? response.text() : null
+}
+
+function parseHTML(html) {
+  return new DOMParser().parseFromString(html, "text/html")
+}
+
+async function loadBoxTemplate() {
+  const res = await loadFile("datom-grid-box-template.html")
+  if (!res) throw new Error("missing datom-grid-box-template.html")
+  boxTemplate = parseHTML(res).getElementById("datom-box-template")
+}
+
+// Restore saved boxes: insert, wire up, pull each box's code, then render.
+async function loadContainers() {
+  const res = await loadFile("userfiles/datom-containers.html")
+  if (!res) return
+  const saved = [...parseHTML(res).querySelectorAll(".datom-box")]
+  for (const box of saved) {
+    box.querySelector(".datom-box-body").innerHTML = ""
+    grid.appendChild(box)
+    boxInfo[box.id] = { lang: "html", html: "", js: "", css: "", q: "" }
+    attachBox(box)
   }
+  // Wait for the code to actually arrive instead of a 100ms guess.
+  await Promise.all(saved.map(box => loadEditorCode(box.id)))
+  saved.forEach(box => renderBox(box.id))
+  updateBoxState()
 }
 
-//Convert HTML string to HTML objects
-function parseHTML(html){
-  var parser = new DOMParser();
-  return parser.parseFromString(html, "text/html");
+function toast(msg) {
+  const el = document.getElementById("toast")
+  el.textContent = msg
+  el.classList.add("show")
+  setTimeout(() => el.classList.remove("show"), 2200)
 }
 
-function loadBoxTemplateHTML(){
-  //Load template HTML used for new boxes
-  const htmls = loadHtml("datom-grid-box-template.html").then((res) => {
-    var reselem = parseHTML(res);
-    boxTemplate = reselem.getElementById("datom-box-template");
-  });
-}
+;(async function boot() {
+  ace.require("ace/ext/language_tools")
+  initEditor()
 
-function loadContainerHTML(){
-  console.log("Running loadContainerHTML");
-  //Load any already stored boxes, insert to DOM, create editor for each, load editor code from server
-  const htmlb = loadHtml("userfiles/datom-containers.html").then((res) => {
-    var reselem = parseHTML(res);
-    console.log("Datom containers!", reselem);
-    if(reselem.body.innerHTML !== "error"){
-      reselem = reselem.querySelectorAll(".datom-box");
-      datomContainer.innerHTML = '';
-      loopfn(reselem,(function(item,i){
-        console.log(item);
-        //replace the body and repopulate from the editor code!!
-        item.querySelector(".datom-box-body").innerHTML = '';
-        boxInfo[item.id] = {};
-        boxInfo[item.id]['boxelem'] = item;
-        datomContainer.appendChild(item);
-        createEditor(item.id);
-        loadEditorCode(item.id);
-        boxInfo[item.id]['lang'] = 'html';
-      }));
-      updateBoxState();
-      setTimeout(function() {
-        renderCustomCode();
-      }, 100);
-    }
-    getLayouts();
-  });
-}
+  document.getElementById("btn-new-layout").addEventListener("click", newLayout)
+  document.getElementById("btn-save-layout").addEventListener("click", saveLayout)
+  // Bound once here; parseLayouts() used to stack a new listener on every call.
+  document.getElementById("file-select").addEventListener("change", changeLayout)
 
-//Document ready
-(function(){
-  console.log("Document ready!");
-  ace.require("ace/ext/language_tools");
-  loadBoxTemplateHTML();
-  loadContainerHTML();
-  fillGrid();
-})();
+  try {
+    await Promise.all([loadBoxTemplate(), loadContainers()])
+  } catch (err) {
+    console.error(err)
+    toast("Failed to load layout: " + err.message)
+    return
+  }
+  // Only now can a grid click build a box, so wire the grid last.
+  initGrid()
+  await getLayouts()
+})()

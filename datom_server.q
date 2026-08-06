@@ -1,41 +1,23 @@
-\p 5000
--1"\nhttp://localhost:5000/datom.html\n";
+\p 5002
+-1"\nhttp://localhost:5002/datom.html\n";
 \e 1
 \d .dtom
-PROJ_ROOT:"/Users/michael/q/projects/datom"
+PROJ_ROOT:first system"pwd"
 DB_ROOT:PROJ_ROOT,"/db"
 HTML_ROOT:PROJ_ROOT,"/html"
 LAYOUTS:PROJ_ROOT,"/layouts"
 HTML_FILE:HTML_ROOT,"/datom.html"
+if[not(`$"datom.html")in key hsym`$HTML_ROOT;'"start datom from the repo root: no ",HTML_FILE];
 \d .
 
-.h.HOME:"html_v1"
+/ .h.HOME defaults to "html" relative to cwd, which ldb[] sets to PROJ_ROOT
 
-tilw:{x+til 1+y-x}
-
-rmLibs:{
-  dirs:enlist .dtom.HTML_ROOT,"/libs";
-  if[not(0#`)~d:key h:hsym`$.dtom.LAYOUTS;dirs,:1_'string .Q.dd[h;]each (d,\:`libs)];
-  @[system;;()]each"rm -r ",/:dirs;
-  :dirs;
- }
-
-addLibs:{
-  dirs:rmLibs[];
-  libdir:.dtom.PROJ_ROOT,"/libs";
-  {@[system;" "sv("ln -s";x;y);{show x}];}[libdir;]each dirs;
- }
-
-.dtom.htmlbreak:("<!--@KDB_BREAK_START@-->";"<!--@KDB_BREAK_END@-->")
-
-.dtom.htmlrepl:{[html;newhtml]
- ri:where max flip{.dtom.htmlbreak~\:trim x}each html;
- start:tilw[0;ri[0]];
- end:tilw[ri[1];count[html]-1];
- :raze(html start;newhtml;html end);
- }
+/ rmLibs/addLibs lived here to symlink a vendored libs/ into every layout
+/ snapshot. ace and apexcharts come from a CDN now, so both are gone -- and
+/ with them the "rm -r" built from a hardcoded path.
 
 ldb:{
+ system"mkdir -p ",.dtom.DB_ROOT;  / db/ is generated, not checked in
  system"l ",.dtom.DB_ROOT;
  system"cd ",.dtom.PROJ_ROOT;
  }
@@ -49,21 +31,18 @@ ldb[];
  layout:([]filetime:enlist st:string .z.Z;data:enlist res);
  newdir:.dtom.PROJ_ROOT,"/layouts/datom_",st inter .Q.n;
  system"mkdir -p ",newdir;
- rmLibs[];
  system"cp -r ",.dtom.HTML_ROOT,"/* ",newdir;
- addLibs[];
- {show x 0: $[0>type first y;enlist y;y];}'[.Q.dd[hsym`$newdir,"/userfiles";]each`$scripts[;0];scripts[;1]];
+ system"mkdir -p ",newdir,"/userfiles";  / after the copy, else cp nests it
+ / split on newline so multi-line code is written as real lines, not one blob
+ {show x 0: "\n" vs y;}'[.Q.dd[hsym`$newdir,"/userfiles";]each`$scripts[;0];scripts[;1]];
  show(hsym`$newdir,"/userfiles/datom-containers.html")0: newhtml;
  layout:`filetime`dir xcols @[layout;`dir;:;enlist newdir];
  show(hsym`$.dtom.DB_ROOT,"/layout")upsert layout;
  ldb[];
- :1b;
+ :st;  / the new filetime, so the client can refresh and select it
  }
 
-.req.getLayouts:{
-  if[not`layout in key`.;:0b;];
-  :layout;
- }
+.req.getLayouts:{$[`layout in key`.;layout;()]}  / () -> [] so an empty db is not an error
 
 .req.changeLayout:{
   .h.HOME:.dtom.PROJ_ROOT,"/layouts/datom_",x inter .Q.n;
@@ -75,44 +54,17 @@ ldb[];
   :1b;
  }
 
-.req.handleReq:{
- endp:`$x`endp;
- res:0b;
- if[endp in key .req;res:value(`.req;endp;x`payl)];
- :res;
- }
-
+/ Single POST endpoint: /handleReq with {"endp":"...","payl":...}, dispatched
+/ on endp. kdb hands .z.pp x[0] as "<url> <body>" -- a SPACE, not the "?" the
+/ old parse split on, so every request used to die in .j.k with 'partial token.
 .z.pp:{
  .web.ppx:x;
- data:x[0];head:x[1];
- handler:`$first s:"?"vs data;
- data:.j.k trim"?"sv 1_s;
- res:0b;
- if[handler in key .req;res:value(`.req;handler;data)];
- resp:.h.hy[`json;.j.j(`called`payl`resp)!(data`endp;data`payl;res)];
- :resp;
+ data:.j.k trim" "sv 1_" "vs x 0;
+ endp:`$data`endp;
+ .dtom.lastErr:$[endp in key .req;"";"no handler: ",data`endp];
+ res:$[count .dtom.lastErr;0b;@[value(`.req;endp);data`payl;{.dtom.lastErr:x;0b}]];
+ if[count .dtom.lastErr;-1"REQ ERROR (",data[`endp],"): ",.dtom.lastErr];
+ :.h.hy[`json;.j.j`called`payl`resp`err!(data`endp;data`payl;res;.dtom.lastErr)];
  }
 
 
-\
-.req.saveLayout:{
- boxes:x 0;
- scripts:x 1;
- scripts:update container:{last"_"vs x}'[box]from update box:string key[scripts]from value scripts;
- scripts:delete html from scripts; //html is already in the container text as it's in the DOM...
- scripts:raze{{(x[`container],".",string y;x[y])}[y;]each x}[`js`css`q;]each scripts;
- res:uj/[{`ID xcols update ID:count[i]#enlist[x]from((cols[y]except`txt),`txt)xcols y}'[key boxes;enlist each value boxes]];
- newhtml:enlist"\n"sv res`txt;
- layout:([]filetime:enlist st:string .z.Z;data:enlist res);
- newdir:.dtom.PROJ_ROOT,"/layouts/datom_",st inter .Q.n;
- {show x 0: $[0>type first y;enlist y;y];}'[.Q.dd[hsym`$newdir,"/userfiles";]each`$scripts[;0];scripts[;1]];
- system"mkdir -p ",newdir;
- rmLibs[];
- system"cp -r ",.dtom.HTML_ROOT,"/* ",newdir;
- addLibs[];
- show(hsym`$newdir,"/userfiles/datom-containers.html")0: newhtml;
- layout:`filetime`dir xcols @[layout;`dir;:;enlist newdir];
- show(hsym`$.dtom.DB_ROOT,"/layout")upsert layout;
- ldb[];
- :1b;
- }

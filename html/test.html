@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Datom self-check</title>
+    <link rel="stylesheet" href="css/draggable.css">
+    <style>
+      #results { position: fixed; inset: 0; z-index: 500; margin: 0; padding: 24px 28px;
+                 background: var(--bg); color: var(--fg); overflow: auto;
+                 font: 13px/1.9 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .pass::before { content: "PASS  "; color: #2ea043; }
+      .fail::before { content: "FAIL  "; color: #e5484d; }
+      .fail { color: #e5484d; }
+      h1 { font: 600 15px/2.4 system-ui, sans-serif; margin: 0 0 8px; }
+    </style>
+  </head>
+  <body>
+    <!-- Same DOM the app boots against; the suite drives the real modules. -->
+    <header class="datom-header" style="display:none">
+      <button id="btn-new-layout"></button><button id="btn-save-layout"></button>
+      <select id="file-select"></select>
+    </header>
+    <main id="datom-grid-container"></main>
+    <dialog id="editorModal">
+      <div class="editor-bar">
+        <div class="lang_icons">
+          <button class="lang_icon" data-lang="html" aria-pressed="true">HTML</button>
+          <button class="lang_icon" data-lang="js" aria-pressed="false">JS</button>
+          <button class="lang_icon" data-lang="css" aria-pressed="false">CSS</button>
+          <button class="lang_icon" data-lang="q" aria-pressed="false">Q</button>
+        </div>
+        <span id="editor-target"></span>
+        <button id="btn-close-editor">Close</button>
+      </div>
+      <div id="editorHost"></div>
+    </dialog>
+    <div id="toast"></div>
+    <div id="results"><h1>Datom self-check</h1></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.36.5/src-min-noconflict/ace.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.36.5/src-min-noconflict/ext-language_tools.js"></script>
+    <script src="js/boxes.js"></script>
+    <script src="js/editor.js"></script>
+    <script src="js/draggable.js"></script>
+    <script src="js/grid.js"></script>
+    <script src="js/configure_datom.js"></script>
+    <script>
+      const wait = ms => new Promise(r => setTimeout(r, ms))
+      const errs = []
+      addEventListener("error", e => errs.push(e.message))
+
+      addEventListener("load", () => setTimeout(async () => {
+        const el = document.getElementById("results")
+        const ok = (name, cond) => {
+          const li = document.createElement("div")
+          li.className = cond ? "pass" : "fail"
+          li.textContent = name
+          el.appendChild(li)
+        }
+        try {
+          ok("boots with no grid cell divs", grid.children.length === 0)
+          ok("box template loaded", !!boxTemplate)
+
+          const a = newBox(3, 4), b = newBox(10, 20)
+          ok("cloneNode gives two live boxes",
+             grid.querySelectorAll(".datom-box").length === 2 && a.isConnected && b.isConnected)
+          ok("gridArea round trips through getArea",
+             JSON.stringify(getArea(a)) === '{"row":3,"col":4,"w":12,"h":8}')
+
+          boxInfo[a.id].html = "<p class=t>hi</p>"
+          boxInfo[a.id].css = ".t{color:rgb(1,2,3)}"
+          boxInfo[a.id].js = "window.__n=(window.__n||0)+1"
+          renderBox(a.id)
+          ok("renders html + css + js",
+             a.querySelector(".t") &&
+             getComputedStyle(a.querySelector(".t")).color === "rgb(1, 2, 3)" && window.__n === 1)
+          renderBox(b.id)
+          ok("rendering one box does not re-eval another", window.__n === 1)
+
+          openEditor(a.id)
+          ok("editor opens on the right buffer", editor.getValue() === "<p class=t>hi</p>")
+          showLang("css"); await wait(900)   // ace fetches modes from the cdn
+          ok("language tab sets ace mode and value",
+             editor.session.getMode().$id === "ace/mode/css" && editor.getValue() === ".t{color:rgb(1,2,3)}")
+          editor.setValue("/*edited*/", -1)
+          document.getElementById("btn-close-editor").click(); await wait(200)
+          ok("closing stashes the edit", boxInfo[a.id].css === "/*edited*/")
+
+          const r = grid.getBoundingClientRect(), cw = r.width / COLS, ch = r.height / ROWS
+          const at = (c, rw, id) => ({ clientX: r.left + (c - .5) * cw, clientY: r.top + (rw - .5) * ch,
+                                       pointerId: id || 1, button: 0, bubbles: true })
+          const hdr = a.querySelector(".datom-box-header")
+          hdr.dispatchEvent(new PointerEvent("pointerdown", at(4, 3)))
+          hdr.dispatchEvent(new PointerEvent("pointermove", at(7, 5)))
+          hdr.dispatchEvent(new PointerEvent("pointerup", at(7, 5)))
+          ok("drag moves the grid area", getArea(a).col === 7 && getArea(a).row === 5)
+
+          const rz = a.querySelector(".datom-box-resize")
+          rz.dispatchEvent(new PointerEvent("pointerdown", at(18, 12)))
+          rz.dispatchEvent(new PointerEvent("pointermove", at(22, 15)))
+          rz.dispatchEvent(new PointerEvent("pointerup", at(22, 15)))
+          ok("resize grows width and height", getArea(a).w === 16 && getArea(a).h === 11)
+
+          // A real click here used to be swallowed: the header captured the
+          // pointer and retargeted pointerup/click away from the button.
+          // .click() cannot reproduce that, so assert the invariant instead.
+          a.querySelector(".datom-edit").dispatchEvent(
+            new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 9 }))
+          ok("pressing a header button does not start a drag",
+             !a.querySelector(".datom-box-header").hasPointerCapture(9) &&
+             !a.classList.contains("dragging"))
+          a.querySelector(".datom-box-header").dispatchEvent(
+            new PointerEvent("pointerup", { bubbles: true, button: 0, pointerId: 9 }))
+
+          const n = grid.querySelectorAll(".datom-box").length
+          grid.dispatchEvent(new PointerEvent("pointerdown", at(50, 30, 2)))
+          ok("clicking empty grid creates a box", grid.querySelectorAll(".datom-box").length === n + 1)
+          a.dispatchEvent(new PointerEvent("pointerdown", at(8, 6, 3)))
+          ok("clicking a box does not create one", grid.querySelectorAll(".datom-box").length === n + 1)
+
+          deleteBox(b.id)
+          ok("delete removes element and state", !document.getElementById(b.id) && !boxInfo[b.id])
+
+          updateBoxState()
+          ok("saved txt keeps geometry, drops body and style blob",
+             /grid-area/.test(boxInfo[a.id].txt) && !/hi<\/p>/.test(boxInfo[a.id].txt) &&
+             boxInfo[a.id].style === undefined)
+
+          boxInfo[a.id].js = "throw new Error('contained')"
+          renderBox(a.id)
+          ok("a throwing box does not break the page", a.isConnected)
+        } catch (e) {
+          ok("suite ran without throwing: " + e.message, false)
+        }
+        const failed = el.querySelectorAll(".fail").length
+        const head = document.createElement("div")
+        head.style.marginTop = "12px"
+        head.textContent = failed ? `${failed} FAILED` : "all checks passed"
+        el.appendChild(head)
+      }, 1200))
+    </script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+.DS_Store
+
+# generated at runtime by the server
+/layouts/
+/db/

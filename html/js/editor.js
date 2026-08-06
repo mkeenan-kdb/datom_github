@@ -1,113 +1,104 @@
-function renderHTML(){
-  Object.keys(boxInfo).forEach((item) => {
-    document.getElementById(item).querySelector(".datom-box-body").innerHTML = boxInfo[item].html;
-  });
+// One persistent ace instance shared by every box. The old code created an
+// editor per box inside the modal, then wiped the modal's innerHTML right
+// after ace attached to it, detaching the editor it had just built.
+
+let editor
+let editingId = null
+
+const prefersDark = matchMedia("(prefers-color-scheme: dark)")
+const aceTheme = () => "ace/theme/" + (prefersDark.matches ? "tomorrow_night" : "textmate")
+
+function initEditor() {
+  editor = ace.edit(document.getElementById("editorHost"))
+  editor.setTheme(aceTheme())
+  prefersDark.addEventListener("change", () => editor.setTheme(aceTheme()))
+  editor.setOptions({
+    enableBasicAutocompletion: true,
+    enableSnippets: true,
+    enableLiveAutocompletion: true,
+    fontSize: 13
+  })
+  editor.commands.addCommand({
+    name: "apply",
+    bindKey: { win: "Ctrl-S", mac: "Cmd-S" },
+    exec: () => { stashEditor(); renderBox(editingId) }
+  })
+
+  document.querySelectorAll(".lang_icon").forEach(btn =>
+    btn.addEventListener("click", () => showLang(btn.dataset.lang)))
+  // Stash here too: the close event is the only path for Esc, but relying on
+  // it alone leaves the buffer's fate to async event timing.
+  document.getElementById("btn-close-editor")
+    .addEventListener("click", () => { stashEditor(); editorModal.close() })
+  editorModal.addEventListener("close", () => {
+    stashEditor()          // idempotent
+    renderBox(editingId)
+    editingId = null
+  })
 }
 
-function renderCSS(){
-  Object.keys(boxInfo).forEach((item) => {
-    var newid = "css_"+item;
-    var newsheet = document.getElementById(newid);
-    if(!newsheet){
-      console.log("There is no existing stylesheet. Creating it!");
-      newsheet = document.createElement("style");
-      newsheet.id = newid;
-      document.head.appendChild(newsheet);
-    }
-    document.getElementById(newid).remove();
-    boxInfo[item]['cssid'] = newid;
-    console.log("Adding edtitor css to head of document");
-    newsheet.innerText = boxInfo[item].css;
-    document.head.appendChild(newsheet);
-  });
+function stashEditor() {
+  if (editingId && boxInfo[editingId]) {
+    boxInfo[editingId][boxInfo[editingId].lang] = editor.getValue()
+  }
 }
 
-function renderJS(){
-  Object.keys(boxInfo).forEach((item) => {
-    console.log(boxInfo[item]['js']);
-    eval(boxInfo[item].js);
-  });
+// Point the editor at a language. No stash -- the caller decides whether the
+// current buffer belongs to the box we are about to leave.
+function loadLang(lang) {
+  if (!editingId) return
+  boxInfo[editingId].lang = lang
+  // The old changeEditorScript looked the mode up and then never applied it,
+  // so every tab stayed on javascript highlighting.
+  editor.session.setMode("ace/mode/" + lang_map[lang])
+  editor.setValue(boxInfo[editingId][lang] || "", -1)
+  document.querySelectorAll(".lang_icon").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.lang === lang)))
 }
 
-function renderCustomCode(){
-  console.log(boxInfo);
-  console.log("Running renderCustomCode");
-  renderHTML();
-  renderCSS();
-  renderJS();
+// Tab click: the buffer still belongs to this box, so keep it.
+function showLang(lang) {
+  if (!editingId) return
+  stashEditor()
+  loadLang(lang)
 }
 
-function setEditorMode(elem){
-  let lang = lang_map[elem.value];
-  console.log("setting language to: ",lang);
-  current_editor.session.setMode("ace/mode/"+lang);
+function openEditor(id) {
+  stashEditor()   // flush the previous box BEFORE editingId moves, or its
+  editingId = id  // buffer gets written into the box we are opening
+  document.getElementById("editor-target").textContent = id
+  loadLang(boxInfo[id].lang || "html")
+  editorModal.showModal()
+  editor.resize()
+  editor.focus()
 }
 
-function loadEditorCode(id){
-  console.log("loading editor code for: ",id);
-  var langs = ["js","css","q","html"];
-  langs.forEach((item) => {
-    var code = loadHtml("userfiles/"+id+"."+item).then((res) => {
-      if(res == "error") res = "";
-      boxInfo[id][item] = res;
-      //if(item == "css") renderCSS();
-      //if(item == "js") renderJS();
-      //if(item == "html") renderHTML();
-    });
-  });
+async function loadEditorCode(id) {
+  const files = await Promise.all(LANGS.map(l => loadFile(`userfiles/${id}.${l}`)))
+  // q's 0: terminates the file with a newline; drop exactly one so a
+  // save/load round trip is idempotent instead of growing a blank line.
+  LANGS.forEach((l, i) => boxInfo[id][l] = (files[i] || "").replace(/\n$/, ""))
 }
 
-function changeEditorScript(newlang){
-  var editid = (editorModal.querySelectorAll(`[id^=${"editor_datom"}]`)[0]).id;
-  var parentid = editid.split("_")[1];
-  var lang = newlang.split("_")[0];
-  boxInfo[parentid]['lang'] = lang;
-  newlang = lang_map[newlang];
-  boxInfo[parentid].editor.setValue(boxInfo[parentid][lang]);
-  console.log("setting language to: ",newlang);
-}
+// Render one box. This used to re-render and re-eval every box on every save,
+// which is what stacked duplicate charts on top of each other.
+function renderBox(id) {
+  const box = document.getElementById(id)
+  if (!box || !boxInfo[id]) return
 
-function storeEditorContents(editor){
-  var parentid = editor.container.id.split("_")[1];
-  var currlang = boxInfo[parentid]['lang'];
-  boxInfo[parentid][currlang] = editor.session.getValue();
-  renderCustomCode();
-  console.log("successfully stored editor contents for lang: "+currlang+" for container: ",parentid);
-}
+  box.querySelector(".datom-box-body").innerHTML = boxInfo[id].html || ""
 
-function createEditor(id){
-  console.log("Creating editor on load for, ", id);
-  let neweditor = document.createElement("div");
-  let newid = "editor_"+id;
-  neweditor.id = newid;
-  editorModal.innerHTML = editorTemplate;
-  editorModal.appendChild(neweditor);
-  let edit = ace.edit(newid);
-  edit.setTheme("ace/theme/monokai");
-  edit.session.setMode("ace/mode/javascript");
-  edit.setOption('enableBasicAutocompletion', true);
-  edit.setOption('enableSnippets', true);
-  edit.setOption('enableLiveAutocompletion', true);
-  edit.commands.addCommand({
-    name: 'save',
-    bindKey: {win: "Ctrl-S", "mac": "Cmd-S"},
-    exec: function(editor) {
-      storeEditorContents(editor);
-    }
-  });
-  boxInfo[id]['editelem'] = neweditor;
-  boxInfo[id]['editelemid'] = newid;
-  boxInfo[id]['editor'] = edit;
-  boxInfo[id]['lang'] = 'html';
-  editorModal.innerHTML = editorTemplate;
-  return;
-}
+  let sheet = document.getElementById("css_" + id)
+  if (!sheet) {
+    sheet = document.createElement("style")
+    sheet.id = "css_" + id
+    document.head.appendChild(sheet)
+  }
+  sheet.textContent = boxInfo[id].css || ""
 
-function openEditorModal(elem){
-  var containerid = elem.closest(".datom-box").id;
-  editorModal.innerHTML = editorTemplate;
-  editorModal.appendChild(boxInfo[containerid].editelem);
-  changeEditorScript(boxInfo[containerid].lang);
-  editorModal.showModal();
-  console.log(containerid);
+  try {
+    new Function(boxInfo[id].js || "")()
+  } catch (err) {
+    console.error(`[${id}] js:`, err)   // one bad box must not stop the others
+  }
 }
